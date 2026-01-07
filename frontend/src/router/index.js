@@ -1,23 +1,26 @@
 // Router Vue 3 pour l'application Quiz
-// - Routes publiques : login, register, liste des quiz
-// - Routes protégées : création/édition de quiz
-// - Guards d'authentification
+// - Routes publiques : accueil, login, register, jouer à un quiz
+// - Routes protégées : création, édition, mes quiz
 
 import { createRouter, createWebHistory } from 'vue-router'
-import QuizPage from '../components/QuizPage.vue'
+import QuizListPage from '../views/QuizListPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
+import QuizCreatePage from '../views/QuizCreatePage.vue'
+import QuizEditPage from '../views/QuizEditPage.vue'
+import QuizPlayPage from '../views/QuizPlayPage.vue'
+import MyQuizzesPage from '../views/MyQuizzesPage.vue'
 import { requireAuth, requireGuest } from './guards'
 
 const routes = [
-  // Route principale - Liste des quiz (publique)
+  // Page d'accueil - Liste des quiz publiés
   {
     path: '/',
-    name: 'quizzes',
-    component: QuizPage,
+    name: 'home',
+    component: QuizListPage,
   },
 
-  // Authentification - Accessibles uniquement aux visiteurs
+  // Authentification
   {
     path: '/login',
     name: 'login',
@@ -33,21 +36,39 @@ const routes = [
     meta: { guest: true },
   },
 
-  // Routes protégées (exemples pour le futur)
-  // {
-  //   path: '/quiz/create',
-  //   name: 'quiz-create',
-  //   component: () => import('../views/QuizCreate.vue'),
-  //   beforeEnter: requireAuth,
-  //   meta: { requiresAuth: true },
-  // },
-  // {
-  //   path: '/profile',
-  //   name: 'profile',
-  //   component: () => import('../views/ProfilePage.vue'),
-  //   beforeEnter: requireAuth,
-  //   meta: { requiresAuth: true },
-  // },
+  // Mes quiz (protégé)
+  {
+    path: '/my-quizzes',
+    name: 'my-quizzes',
+    component: MyQuizzesPage,
+    beforeEnter: requireAuth,
+    meta: { requiresAuth: true },
+  },
+
+  // Quiz - Création (protégé)
+  {
+    path: '/quiz/create',
+    name: 'quiz-create',
+    component: QuizCreatePage,
+    beforeEnter: requireAuth,
+    meta: { requiresAuth: true },
+  },
+
+  // Quiz - Édition (protégé)
+  {
+    path: '/quiz/:id/edit',
+    name: 'quiz-edit',
+    component: QuizEditPage,
+    beforeEnter: requireAuth,
+    meta: { requiresAuth: true },
+  },
+
+  // Quiz - Jouer (public)
+  {
+    path: '/quiz/:id/play',
+    name: 'quiz-play',
+    component: QuizPlayPage,
+  },
 
   // Redirection pour les routes inconnues
   {

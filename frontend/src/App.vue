@@ -42,12 +42,19 @@ async function handleLogout() {
 
         <!-- Navigation -->
         <nav class="nav-links">
-          <router-link to="/" class="nav-link">Quiz</router-link>
+          <router-link to="/" class="nav-link">Découvrir</router-link>
+          <router-link v-if="isAuthenticated" to="/my-quizzes" class="nav-link">Mes Quiz</router-link>
         </nav>
 
         <!-- Auth section -->
         <div class="auth-section">
           <template v-if="isAuthenticated && user">
+            <router-link to="/quiz/create" class="create-quiz-btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>Créer</span>
+            </router-link>
             <div class="user-menu">
               <div class="user-avatar">{{ userInitial }}</div>
               <span class="user-name">{{ user.username }}</span>
@@ -183,6 +190,36 @@ async function handleLogout() {
 .auth-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+/* Create quiz button */
+.create-quiz-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.create-quiz-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.create-quiz-btn span {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .create-quiz-btn span {
+    display: inline;
+  }
 }
 
 /* User menu */
