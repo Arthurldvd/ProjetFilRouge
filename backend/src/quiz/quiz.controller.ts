@@ -23,7 +23,12 @@ import {
 import { CreateQuizDto } from './dto/create-quiz.dto';
 import { UpdateQuizDto } from './dto/update-quiz.dto';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
+import {
+  GenerateQuestionsDto,
+  GenerateQuestionsResponse,
+} from './dto/generate-questions.dto';
 import { QuizService } from './quiz.service';
+import { AiGenerationService } from './ai-generation.service';
 import type { Quiz, QuizResult } from './quiz.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -33,7 +38,10 @@ import type { JwtPayload } from '../auth/strategies/jwt.strategy';
 @ApiTags('quizzes')
 @Controller('quizzes')
 export class QuizController {
-  constructor(private readonly quizService: QuizService) {}
+  constructor(
+    private readonly quizService: QuizService,
+    private readonly aiGenerationService: AiGenerationService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -104,6 +112,25 @@ export class QuizController {
     @Body() submitQuizDto: SubmitQuizDto,
   ): QuizResult {
     return this.quizService.submitAnswers(id, submitQuizDto.answers);
+  }
+
+  @Post('generate-questions')
+  @Public()
+  @ApiOperation({ summary: 'Générer des questions avec l\'IA' })
+  @ApiBody({ type: GenerateQuestionsDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Questions générées avec succès.',
+  })
+  @ApiResponse({ status: 401, description: 'Non authentifié.' })
+  @ApiResponse({ status: 500, description: 'Erreur lors de la génération.' })
+  async generateQuestions(
+    @Body() generateQuestionsDto: GenerateQuestionsDto,
+  ): Promise<GenerateQuestionsResponse> {
+    return this.aiGenerationService.generateQuestions(
+      generateQuestionsDto.theme,
+      generateQuestionsDto.count,
+    );
   }
 
   @Put(':id')

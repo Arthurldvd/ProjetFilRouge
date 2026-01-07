@@ -4,7 +4,7 @@
 
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getQuizById, updateQuiz } from '../services/quizService'
+import { getQuizById, updateQuiz, generateQuestionsWithAI } from '../services/quizService'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +25,15 @@ const isLoading = ref(true)
 const isSaving = ref(false)
 const error = ref<string | null>(null)
 const loadError = ref<string | null>(null)
+
+// AI Generation state
+const showAiModal = ref(false)
+const aiTheme = ref('')
+const aiQuestionCount = ref(5)
+const isGenerating = ref(false)
+const aiError = ref<string | null>(null)
+const retryCountdown = ref(0)
+let countdownInterval: ReturnType<typeof setInterval> | null = null
 
 // Validation
 const isFormValid = computed(() => {
@@ -124,6 +133,85 @@ async function handleSubmit() {
     isSaving.value = false
   }
 }
+
+// AI Generation
+function openAiModal() {
+  aiTheme.value = ''
+  aiQuestionCount.value = 5
+  aiError.value = null
+  showAiModal.value = true
+}
+
+function closeAiModal() {
+  showAiModal.value = false
+  aiTheme.value = ''
+  aiError.value = null
+}
+
+function startRetryCountdown(seconds: number) {
+  // Clear any existing countdown
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+  }
+  
+  retryCountdown.value = seconds
+  
+  countdownInterval = setInterval(() => {
+    retryCountdown.value--
+    if (retryCountdown.value <= 0) {
+      if (countdownInterval) {
+        clearInterval(countdownInterval)
+        countdownInterval = null
+      }
+    }
+  }, 1000)
+}
+
+async function generateWithAi() {
+  if (!aiTheme.value.trim()) {
+    aiError.value = 'Veuillez entrer un thème'
+    return
+  }
+
+  // Don't allow generation while countdown is active
+  if (retryCountdown.value > 0) {
+    return
+  }
+
+  isGenerating.value = true
+  aiError.value = null
+
+  try {
+    const response = await generateQuestionsWithAI({
+      theme: aiTheme.value,
+      count: aiQuestionCount.value,
+    })
+
+    // Add generated questions to the quiz
+    response.questions.forEach((q) => {
+      questions.value.push({
+        text: q.text,
+        answers: q.answers.map((a) => ({
+          text: a.text,
+          isCorrect: a.isCorrect,
+        })),
+      })
+    })
+
+    closeAiModal()
+  } catch (e: unknown) {
+    // Check if it's a quota exceeded error (429)
+    const error = e as { response?: { data?: { retryAfter?: number; statusCode?: number } } }
+    if (error.response?.data?.statusCode === 429 && error.response?.data?.retryAfter) {
+      startRetryCountdown(error.response.data.retryAfter)
+      aiError.value = null // Clear text error, we'll show the countdown instead
+    } else {
+      aiError.value = e instanceof Error ? e.message : 'Erreur lors de la génération'
+    }
+  } finally {
+    isGenerating.value = false
+  }
+}
 </script>
 
 <template>
@@ -203,12 +291,20 @@ async function handleSubmit() {
           <section class="form-section">
             <div class="section-header">
               <h2>Questions</h2>
-              <button type="button" class="add-btn" @click="addQuestion">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                Ajouter une question
-              </button>
+              <div class="section-actions">
+                <button type="button" class="ai-btn" @click="openAiModal">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 1L10 5L14 5.5L11 8.5L12 13L8 10.5L4 13L5 8.5L2 5.5L6 5L8 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  </svg>
+                  Générer avec l'IA
+                </button>
+                <button type="button" class="add-btn" @click="addQuestion">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                  Ajouter une question
+                </button>
+              </div>
             </div>
 
             <!-- Empty state -->
@@ -315,6 +411,109 @@ async function handleSubmit() {
         </form>
       </template>
     </div>
+
+    <!-- AI Generation Modal -->
+    <Teleport to="body">
+      <div v-if="showAiModal" class="modal-overlay" @click.self="closeAiModal">
+        <div class="ai-modal">
+          <div class="ai-modal-header">
+            <div class="ai-modal-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L15 8L22 9L17 14L18 21L12 17L6 21L7 14L2 9L9 8L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <h3>Générer des questions avec l'IA</h3>
+            <button type="button" class="modal-close" @click="closeAiModal">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="ai-modal-body">
+            <p class="ai-description">
+              Décrivez le thème de vos questions et l'IA va générer automatiquement des questions à choix multiples.
+            </p>
+
+            <!-- Quota warning with countdown -->
+            <div v-if="retryCountdown > 0" class="ai-quota-warning">
+              <div class="quota-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M10 6V10L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="quota-content">
+                <span class="quota-title">Quota API temporairement épuisé</span>
+                <span class="quota-timer">Réessayez dans <strong>{{ retryCountdown }}s</strong></span>
+              </div>
+            </div>
+
+            <div v-else-if="aiError" class="ai-error">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M8 5V8M8 11H8.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              {{ aiError }}
+            </div>
+
+            <div class="ai-form-group">
+              <label for="ai-theme">Thème des questions *</label>
+              <input
+                id="ai-theme"
+                v-model="aiTheme"
+                type="text"
+                placeholder="Ex: La Seconde Guerre mondiale, Les planètes du système solaire..."
+                :disabled="isGenerating"
+              />
+            </div>
+
+            <div class="ai-form-group">
+              <label for="ai-count">Nombre de questions</label>
+              <div class="ai-count-selector">
+                <button 
+                  type="button" 
+                  :disabled="aiQuestionCount <= 1 || isGenerating"
+                  @click="aiQuestionCount = Math.max(1, aiQuestionCount - 1)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 7H11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+                <span class="ai-count-value">{{ aiQuestionCount }}</span>
+                <button 
+                  type="button" 
+                  :disabled="aiQuestionCount >= 10 || isGenerating"
+                  @click="aiQuestionCount = Math.min(10, aiQuestionCount + 1)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M7 3V11M3 7H11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-modal-footer">
+            <button type="button" class="ai-cancel-btn" @click="closeAiModal" :disabled="isGenerating">
+              Annuler
+            </button>
+            <button 
+              type="button" 
+              class="ai-generate-btn" 
+              @click="generateWithAi"
+              :disabled="isGenerating || !aiTheme.trim() || retryCountdown > 0"
+            >
+              <span v-if="isGenerating" class="ai-spinner"></span>
+              <svg v-else width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1L10 5L14 5.5L11 8.5L12 13L8 10.5L4 13L5 8.5L2 5.5L6 5L8 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>
+              {{ isGenerating ? 'Génération en cours...' : retryCountdown > 0 ? `Patientez ${retryCountdown}s` : 'Générer les questions' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -794,6 +993,349 @@ async function handleSubmit() {
   animation: spin 0.8s linear infinite;
 }
 
+/* Section actions */
+.section-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* AI Button */
+.ai-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(236, 72, 153, 0.15) 100%);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-radius: 8px;
+  color: #c084fc;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-btn:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(236, 72, 153, 0.25) 100%);
+  border-color: rgba(168, 85, 247, 0.6);
+  color: #d8b4fe;
+  transform: translateY(-1px);
+}
+
+.ai-btn svg {
+  fill: rgba(168, 85, 247, 0.3);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+/* AI Modal */
+.ai-modal {
+  background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4), 0 0 80px rgba(168, 85, 247, 0.1);
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ai-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-modal-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%);
+  border-radius: 10px;
+  color: #c084fc;
+}
+
+.ai-modal-icon svg {
+  fill: rgba(168, 85, 247, 0.3);
+}
+
+.ai-modal-header h3 {
+  flex: 1;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.modal-close {
+  padding: 0.5rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.modal-close:hover {
+  color: #fff;
+}
+
+.ai-modal-body {
+  padding: 1.5rem;
+}
+
+.ai-description {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  margin: 0 0 1.5rem;
+}
+
+.ai-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+/* Quota warning */
+.ai-quota-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(245, 158, 11, 0.1) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  animation: pulseWarning 2s ease-in-out infinite;
+}
+
+@keyframes pulseWarning {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.2);
+  }
+  50% { 
+    box-shadow: 0 0 20px 0 rgba(251, 191, 36, 0.15);
+  }
+}
+
+.quota-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(251, 191, 36, 0.2);
+  border-radius: 10px;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.quota-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.quota-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.quota-timer {
+  font-size: 0.8125rem;
+  color: rgba(251, 191, 36, 0.8);
+}
+
+.quota-timer strong {
+  color: #fbbf24;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-form-group {
+  margin-bottom: 1.25rem;
+}
+
+.ai-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.ai-form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.5rem;
+}
+
+.ai-form-group input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.ai-form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.ai-form-group input:focus {
+  outline: none;
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.ai-form-group input:disabled {
+  opacity: 0.5;
+}
+
+/* Count selector */
+.ai-count-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-count-selector button {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-count-selector button:hover:not(:disabled) {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #c084fc;
+}
+
+.ai-count-selector button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ai-count-value {
+  min-width: 48px;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Modal footer */
+.ai-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-cancel-btn {
+  padding: 0.75rem 1.25rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-cancel-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.ai-cancel-btn:disabled {
+  opacity: 0.5;
+}
+
+.ai-generate-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-generate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -8px rgba(168, 85, 247, 0.5);
+}
+
+.ai-generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ai-generate-btn svg {
+  fill: rgba(255, 255, 255, 0.3);
+}
+
+.ai-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .form-actions {
@@ -802,6 +1344,32 @@ async function handleSubmit() {
 
   .cancel-btn,
   .submit-btn {
+    width: 100%;
+  }
+
+  .section-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .ai-btn,
+  .add-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ai-modal-footer {
+    flex-direction: column;
+  }
+
+  .ai-cancel-btn,
+  .ai-generate-btn {
     width: 100%;
   }
 }

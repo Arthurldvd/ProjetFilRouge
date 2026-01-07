@@ -65,6 +65,23 @@ export interface SubmitAnswer {
   answerId: number
 }
 
+export interface GeneratedQuestion {
+  text: string
+  answers: {
+    text: string
+    isCorrect: boolean
+  }[]
+}
+
+export interface GenerateQuestionsData {
+  theme: string
+  count: number
+}
+
+export interface GenerateQuestionsResponse {
+  questions: GeneratedQuestion[]
+}
+
 // API calls
 
 /**
@@ -135,6 +152,19 @@ export const deleteQuiz = async (id: number): Promise<void> => {
  */
 export const submitQuiz = async (quizId: number, answers: SubmitAnswer[]): Promise<QuizResult> => {
   const response = await apiClient.post<QuizResult>(`/quizzes/${quizId}/submit`, { answers })
+  return response.data
+}
+
+/**
+ * Générer des questions avec l'IA
+ */
+export const generateQuestionsWithAI = async (
+  data: GenerateQuestionsData
+): Promise<GenerateQuestionsResponse> => {
+  const response = await apiClient.post<GenerateQuestionsResponse>(
+    '/quizzes/generate-questions',
+    data
+  )
   return response.data
 }
 
