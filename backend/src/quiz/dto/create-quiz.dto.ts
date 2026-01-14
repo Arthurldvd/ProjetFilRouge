@@ -1,5 +1,56 @@
+// DTO pour la création d'un quiz avec questions à choix multiples
+
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+  ArrayMinSize,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CreateAnswerDto {
+  @ApiProperty({
+    description: 'Texte de la réponse',
+    example: 'NestJS est un framework Node.js',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  text: string;
+
+  @ApiProperty({
+    description: 'Indique si cette réponse est correcte',
+    example: true,
+  })
+  @IsBoolean()
+  isCorrect: boolean;
+}
+
+export class CreateQuestionDto {
+  @ApiProperty({
+    description: 'Texte de la question',
+    example: 'Qu\'est-ce que NestJS ?',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  text: string;
+
+  @ApiProperty({
+    description: 'Liste des réponses possibles',
+    type: [CreateAnswerDto],
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @ArrayMinSize(2, { message: 'Une question doit avoir au moins 2 réponses' })
+  @Type(() => CreateAnswerDto)
+  answers: CreateAnswerDto[];
+}
 
 export class CreateQuizDto {
   @ApiProperty({
@@ -28,5 +79,15 @@ export class CreateQuizDto {
   @IsBoolean()
   @IsOptional()
   isPublished?: boolean = false;
-}
 
+  @ApiProperty({
+    description: 'Liste des questions du quiz',
+    type: [CreateQuestionDto],
+    required: false,
+  })
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuestionDto)
+  questions?: CreateQuestionDto[];
+}

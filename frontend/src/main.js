@@ -4,6 +4,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { useAuthStore } from './stores/authStore'
 
 const app = createApp(App)
 
@@ -14,4 +15,8 @@ app.use(pinia)
 // Enregistrement du router Vue
 app.use(router)
 
-app.mount('#app')
+// Initialisation de l'authentification avant le montage
+const authStore = useAuthStore()
+authStore.initializeAuth().finally(() => {
+  app.mount('#app')
+})
