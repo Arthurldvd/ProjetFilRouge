@@ -34,8 +34,3 @@ docker-compose*
 
 # Documentation
 README.md
-*.md
-
-# Misc
-jsconfig.json
-vite.config.js
