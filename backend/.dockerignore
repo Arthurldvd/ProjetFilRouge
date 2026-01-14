@@ -39,10 +39,9 @@ docker-compose*
 
 # Documentation
 README.md
-*.md
+
 
 # Misc
 .eslintrc*
 .prettierrc*
-tsconfig*.json
 nest-cli.json
