@@ -46,7 +46,7 @@ jobs:
  backend-test:
    name: 🧪 Backend Tests
    runs-on: ubuntu-latest
-   needs: [ backend-build]
+   needs: [ backend-build] 
    defaults:
      run:
        working-directory: ./backend
